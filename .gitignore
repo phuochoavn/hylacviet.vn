@@ -1,0 +1,27 @@
+# Secrets - NEVER commit
+.env.production
+.env.local
+.env
+
+# SSL Certificates
+traefik/acme.json
+
+# Node modules (cho sau này)
+node_modules/
+.next/
+dist/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Docker volumes data (không cần commit)
+volumes/

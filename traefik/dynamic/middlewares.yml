@@ -1,0 +1,37 @@
+#===============================================================================
+# TRAEFIK - DYNAMIC CONFIGURATION (Middlewares)
+#===============================================================================
+
+http:
+  middlewares:
+    #---------------------------------------
+    # Security Headers
+    #---------------------------------------
+    secure-headers:
+      headers:
+        frameDeny: true
+        sslRedirect: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+        customFrameOptionsValue: "SAMEORIGIN"
+        referrerPolicy: "strict-origin-when-cross-origin"
+    
+    #---------------------------------------
+    # Rate Limiting (100 requests/minute)
+    #---------------------------------------
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: 1m
+    
+    #---------------------------------------
+    # Compression
+    #---------------------------------------
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
