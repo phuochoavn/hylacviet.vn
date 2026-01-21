@@ -35,7 +35,7 @@ entryPoints:
 certificatesResolvers:
   cloudflare:
     acme:
-      email: ${ACME_EMAIL}
+      email: hoavn12345@gmail.com
       storage: /letsencrypt/acme.json
       dnsChallenge:
         provider: cloudflare
