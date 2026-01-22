@@ -56,18 +56,27 @@ function getImagesForVariant(
   product: HttpTypes.StoreProduct,
   selectedVariantId?: string
 ) {
+  if (!product || !product.images) {
+    return []
+  }
+
+  const validProductImages = product.images.filter((i) => i && i.id)
+
   if (!selectedVariantId || !product.variants) {
-    return product.images || []
+    return validProductImages
   }
 
-  const variant = product.variants!.find((v) => v.id === selectedVariantId)
-  if (!variant || !variant.images?.length) {
-    return product.images || []
+  const variant = product.variants.find((v) => v.id === selectedVariantId)
+
+  if (!variant || !variant.images || !variant.images.length) {
+    return validProductImages
   }
 
-  const imageIdsMap = new Map(variant.images.map((i) => [i.id, true]))
-  return (product.images || []).filter((i) => imageIdsMap.has(i.id))
-}
+  const variantImageIds = new Set(
+    variant.images.filter((i) => i && i.id).map((i) => i.id)
+  )
+
+  return validProductImages.filter((i) => variantImageIds.has(i.id))
 }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
@@ -115,11 +124,11 @@ export default async function ProductPage(props: Props) {
     queryParams: { handle: params.handle },
   }).then(({ response }) => response.products[0])
 
-  const images = getImagesForVariant(pricedProduct, selectedVariantId)
-
   if (!pricedProduct) {
     notFound()
   }
+
+  const images = getImagesForVariant(pricedProduct, selectedVariantId)
 
   return (
     <ProductTemplate
