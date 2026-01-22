@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   traefik-public:
     name: traefik-public
@@ -138,9 +136,6 @@ services:
     image: hylacviet/medusa:latest
     container_name: medusa-server
     restart: always
-    # QUAN TRỌNG: Không mount code local đè lên code trong image!
-    # Chỉ mount config nếu cần thiết, nhưng tốt nhất là build cứng vào image.
-    # Ở đây ta KHÔNG mount volumes code nữa.
     environment:
       - MEDUSA_WORKER_MODE=server
       - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
@@ -222,3 +217,41 @@ services:
           memory: 256M
     labels:
       - "traefik.enable=false"
+
+  storefront:
+    build:
+      context: ./storefront
+      dockerfile: Dockerfile
+      args:
+        - MEDUSA_BACKEND_URL=https://api.hylacviet.vn
+        - NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY=pk_c7e158133755cc2a7f902a3107916123ee38d1de531d0cebdbbbaed8a7d07b4c
+        - NEXT_PUBLIC_BASE_URL=https://hylacviet.vn
+        - NEXT_PUBLIC_DEFAULT_REGION=vn
+    image: hylacviet/storefront:latest
+    container_name: storefront
+    restart: always
+    environment:
+      - PORT=8000
+      - HOSTNAME=0.0.0.0
+      - MEDUSA_BACKEND_URL=https://api.hylacviet.vn
+      - NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY=pk_c7e158133755cc2a7f902a3107916123ee38d1de531d0cebdbbbaed8a7d07b4c
+      - NEXT_PUBLIC_BASE_URL=https://hylacviet.vn
+      - NEXT_PUBLIC_DEFAULT_REGION=vn
+      - REVALIDATE_SECRET=${REVALIDATE_SECRET:-supersecret_hylacviet_2024}
+    networks:
+      - traefik-public
+    depends_on:
+      - medusa-server
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.storefront.rule=Host(`hylacviet.vn`) || Host(`www.hylacviet.vn`)"
+      - "traefik.http.routers.storefront.entrypoints=websecure"
+      - "traefik.http.routers.storefront.tls=true"
+      - "traefik.http.routers.storefront.tls.certresolver=cloudflare"
+      - "traefik.http.services.storefront.loadbalancer.server.port=8000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8000/favicon.ico"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

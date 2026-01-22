@@ -2,28 +2,14 @@ const checkEnvVariables = require("./check-env-variables")
 
 checkEnvVariables()
 
-/**
- * Medusa Cloud-related environment variables
- */
-const S3_HOSTNAME = process.env.MEDUSA_CLOUD_S3_HOSTNAME
-const S3_PATHNAME = process.env.MEDUSA_CLOUD_S3_PATHNAME
-
-/**
- * @type {import('next').NextConfig}
- */
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  logging: {
-    fetches: {
-      fullUrl: true,
-    },
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  
+  // Enable standalone output for Docker
+  output: 'standalone',
+  
+  // Optimize images
   images: {
     remotePatterns: [
       {
@@ -42,16 +28,29 @@ const nextConfig = {
         protocol: "https",
         hostname: "medusa-server-testing.s3.us-east-1.amazonaws.com",
       },
-      ...(S3_HOSTNAME && S3_PATHNAME
-        ? [
-            {
-              protocol: "https",
-              hostname: S3_HOSTNAME,
-              pathname: S3_PATHNAME,
-            },
-          ]
-        : []),
+      {
+        protocol: "https",
+        hostname: "cdn.hylacviet.vn",
+      },
+      {
+        protocol: "https",
+        hostname: "minio.hylacviet.vn",
+      },
+      {
+        protocol: "https",
+        hostname: "api.hylacviet.vn",
+      },
     ],
+  },
+  
+  // Skip type checking during build
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  
+  // Skip linting during build
+  eslint: {
+    ignoreDuringBuilds: true,
   },
 }
 

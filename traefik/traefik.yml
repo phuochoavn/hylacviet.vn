@@ -1,12 +1,12 @@
 #===============================================================================
-# TRAEFIK v3 - STATIC CONFIGURATION
+# TRAEFIK v2.11 - STATIC CONFIGURATION
 #===============================================================================
 
 #---------------------------------------
 # API & DASHBOARD
 #---------------------------------------
 api:
-  dashboard: false  # Disabled for security
+  dashboard: false
   insecure: false
 
 #---------------------------------------
@@ -24,10 +24,6 @@ entryPoints:
   
   websecure:
     address: ":443"
-    http:
-      tls:
-        certResolver: cloudflare
-    http3: {}  # Enable HTTP/3
 
 #---------------------------------------
 # CERTIFICATE RESOLVERS (Let's Encrypt)
@@ -52,6 +48,7 @@ providers:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
     network: traefik-public
+    watch: true
   
   file:
     directory: /etc/traefik/dynamic
@@ -61,7 +58,7 @@ providers:
 # LOGGING
 #---------------------------------------
 log:
-  level: INFO
+  level: DEBUG
   format: common
 
 accessLog:
