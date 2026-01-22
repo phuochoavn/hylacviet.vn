@@ -25,3 +25,25 @@ Thumbs.db
 
 # Docker volumes data (không cần commit)
 volumes/
+
+# Backup files
+*.backup
+*.bk_ram
+*.bak
+
+# Database dumps
+*.sql
+*.dump
+
+# Build artifacts
+build/
+.cache/
+
+# Yarn
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*

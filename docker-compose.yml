@@ -1,9 +1,4 @@
-#===============================================================================
-# HYLACVIET.VN - DOCKER COMPOSE
-# Infrastructure Stack for MedusaJS v2 + Next.js E-commerce
-#===============================================================================
-# Generated: Wed Jan 21 03:07:08 UTC 2026
-#===============================================================================
+version: '3.8'
 
 networks:
   traefik-public:
@@ -20,9 +15,6 @@ volumes:
   kuma_data:
 
 services:
-  #=============================================================================
-  # TRAEFIK - Edge Router & SSL
-  #=============================================================================
   traefik:
     image: traefik:v2.11
     container_name: traefik
@@ -46,9 +38,6 @@ services:
     labels:
       - "traefik.enable=false"
 
-  #=============================================================================
-  # POSTGRESQL - Database
-  #=============================================================================
   postgres:
     image: postgres:16-alpine
     container_name: postgres
@@ -62,24 +51,12 @@ services:
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
     networks:
       - medusa-internal
-    command:
+    command: 
       - "postgres"
       - "-c"
       - "shared_buffers=256MB"
       - "-c"
       - "max_connections=100"
-      - "-c"
-      - "effective_cache_size=768MB"
-      - "-c"
-      - "maintenance_work_mem=64MB"
-      - "-c"
-      - "checkpoint_completion_target=0.9"
-      - "-c"
-      - "wal_buffers=8MB"
-      - "-c"
-      - "random_page_cost=1.1"
-      - "-c"
-      - "effective_io_concurrency=200"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -88,9 +65,6 @@ services:
     labels:
       - "traefik.enable=false"
 
-  #=============================================================================
-  # REDIS - Event Bus & Cache
-  #=============================================================================
   redis:
     image: redis:7.4-alpine
     container_name: redis
@@ -109,9 +83,6 @@ services:
     labels:
       - "traefik.enable=false"
 
-  #=============================================================================
-  # MINIO - Object Storage (S3-Compatible)
-  #=============================================================================
   minio:
     image: minio/minio:latest
     container_name: minio
@@ -132,22 +103,17 @@ services:
       retries: 3
     labels:
       - "traefik.enable=true"
-      # MinIO API (S3)
       - "traefik.http.routers.minio-api.rule=Host(`cdn.hylacviet.vn`)"
       - "traefik.http.routers.minio-api.entrypoints=websecure"
       - "traefik.http.routers.minio-api.tls.certresolver=cloudflare"
       - "traefik.http.routers.minio-api.service=minio-api"
       - "traefik.http.services.minio-api.loadbalancer.server.port=9000"
-      # MinIO Console - minio.hylacviet.vn
       - "traefik.http.routers.minio-console.rule=Host(`minio.hylacviet.vn`)"
       - "traefik.http.routers.minio-console.entrypoints=websecure"
       - "traefik.http.routers.minio-console.tls.certresolver=cloudflare"
       - "traefik.http.routers.minio-console.service=minio-console"
       - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
 
-  #=============================================================================
-  # UPTIME KUMA - Monitoring
-  #=============================================================================
   uptime-kuma:
     image: louislam/uptime-kuma:latest
     container_name: uptime-kuma
@@ -165,75 +131,94 @@ services:
       - "traefik.http.routers.kuma.middlewares=secure-headers@file"
       - "traefik.http.services.kuma.loadbalancer.server.port=3001"
 
-#===============================================================================
-# PLACEHOLDER SERVICES (Uncomment when ready to deploy applications)
-#===============================================================================
+  medusa-server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: hylacviet/medusa:latest
+    container_name: medusa-server
+    restart: always
+    # QUAN TRỌNG: Không mount code local đè lên code trong image!
+    # Chỉ mount config nếu cần thiết, nhưng tốt nhất là build cứng vào image.
+    # Ở đây ta KHÔNG mount volumes code nữa.
+    environment:
+      - MEDUSA_WORKER_MODE=server
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - STORE_CORS=https://hylacviet.vn,https://www.hylacviet.vn
+      - ADMIN_CORS=https://api.hylacviet.vn
+      - AUTH_CORS=https://hylacviet.vn,https://api.hylacviet.vn
+      - JWT_SECRET=${JWT_SECRET:-VlG0lkftjZBaaj2bBBKd6W29WGMgA1zo}
+      - COOKIE_SECRET=${COOKIE_SECRET:-LGIHhyVWt50Fhn3V4CfpjeCjSshz21Ov}
+      - S3_FILE_URL=https://cdn.hylacviet.vn
+      - S3_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - S3_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - S3_REGION=us-east-1
+      - S3_BUCKET=medusa-media
+      - S3_ENDPOINT=http://minio:9000
+      - MEDUSA_BACKEND_URL=https://api.hylacviet.vn
+    networks:
+      - traefik-public
+      - medusa-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+        reservations:
+          memory: 512M
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.medusa-api.rule=Host(`api.hylacviet.vn`)"
+      - "traefik.http.routers.medusa-api.entrypoints=websecure"
+      - "traefik.http.routers.medusa-api.tls.certresolver=cloudflare"
+      - "traefik.http.routers.medusa-api.middlewares=secure-headers@file"
+      - "traefik.http.routers.medusa-api.service=medusa-api"
+      - "traefik.http.services.medusa-api.loadbalancer.server.port=9000"
 
-  # medusa-server:
-  #   image: node:20-alpine
-  #   container_name: medusa-server
-  #   restart: always
-  #   working_dir: /app
-  #   environment:
-  #     - MEDUSA_WORKER_MODE=server
-  #     - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-  #     - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
-  #   volumes:
-  #     - ./backend:/app
-  #   networks:
-  #     - traefik-public
-  #     - medusa-internal
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   labels:
-  #     - "traefik.enable=true"
-  #     - "traefik.http.routers.medusa.rule=Host(`api.hylacviet.vn`)"
-  #     - "traefik.http.routers.medusa.entrypoints=websecure"
-  #     - "traefik.http.routers.medusa.tls.certresolver=cloudflare"
-  #     - "traefik.http.services.medusa.loadbalancer.server.port=9000"
-
-  # medusa-worker:
-  #   image: node:20-alpine
-  #   container_name: medusa-worker
-  #   restart: always
-  #   working_dir: /app
-  #   environment:
-  #     - MEDUSA_WORKER_MODE=worker
-  #     - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-  #     - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
-  #   volumes:
-  #     - ./backend:/app
-  #   networks:
-  #     - medusa-internal
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 800M
-  #         cpus: '0.5'
-
-  # nextjs:
-  #   image: node:20-alpine
-  #   container_name: nextjs
-  #   restart: always
-  #   working_dir: /app
-  #   environment:
-  #     - NEXT_PUBLIC_MEDUSA_BACKEND_URL=https://api.hylacviet.vn
-  #     - NEXT_PUBLIC_CDN_URL=https://cdn.hylacviet.vn
-  #   volumes:
-  #     - ./frontend:/app
-  #   networks:
-  #     - traefik-public
-  #   labels:
-  #     - "traefik.enable=true"
-  #     - "traefik.http.routers.nextjs.rule=Host(`hylacviet.vn`) || Host(`www.hylacviet.vn`)"
-  #     - "traefik.http.routers.nextjs.entrypoints=websecure"
-  #     - "traefik.http.routers.nextjs.tls.certresolver=cloudflare"
-  #     - "traefik.http.services.nextjs.loadbalancer.server.port=3000"
+  medusa-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: hylacviet/medusa:latest
+    container_name: medusa-worker
+    restart: always
+    environment:
+      - MEDUSA_WORKER_MODE=worker
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - STORE_CORS=https://hylacviet.vn,https://www.hylacviet.vn
+      - ADMIN_CORS=https://api.hylacviet.vn
+      - AUTH_CORS=https://hylacviet.vn,https://api.hylacviet.vn
+      - JWT_SECRET=${JWT_SECRET:-VlG0lkftjZBaaj2bBBKd6W29WGMgA1zo}
+      - COOKIE_SECRET=${COOKIE_SECRET:-LGIHhyVWt50Fhn3V4CfpjeCjSshz21Ov}
+      - S3_FILE_URL=https://cdn.hylacviet.vn
+      - S3_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - S3_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - S3_REGION=us-east-1
+      - S3_BUCKET=medusa-media
+      - S3_ENDPOINT=http://minio:9000
+    networks:
+      - medusa-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      medusa-server:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 800M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+    labels:
+      - "traefik.enable=false"
