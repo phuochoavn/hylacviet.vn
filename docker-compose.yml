@@ -238,6 +238,7 @@ services:
       - NEXT_PUBLIC_BASE_URL=https://hylacviet.vn
       - NEXT_PUBLIC_DEFAULT_REGION=vn
       - REVALIDATE_SECRET=${REVALIDATE_SECRET:-supersecret_hylacviet_2024}
+      - NODE_ENV=production
     networks:
       - traefik-public
     depends_on:
