@@ -1,49 +1,37 @@
-# Secrets - NEVER commit
-.env.production
-.env.local
-.env
-
-# SSL Certificates
-traefik/acme.json
-
-# Node modules (cho sau này)
+# Dependencies
 node_modules/
+*/node_modules/
+
+# Build outputs
 .next/
+*/.next/
 dist/
+build/
+
+# Environment files (keep templates)
+.env
+.env.local
+.env.*.local
+!.env.template
+!.env.production
+
+# Backup files
+*.backup
+*.backup.*
 
 # Logs
-*.log
 logs/
+*.log
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# Docker volumes data (không cần commit)
-volumes/
-
-# Backup files
-*.backup
-*.bk_ram
-*.bak
-
-# Database dumps
-*.sql
-*.dump
-
-# Build artifacts
-build/
-.cache/
-
-# Yarn
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
-.pnp.*
+# Docker
+.docker/
