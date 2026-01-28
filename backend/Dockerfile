@@ -17,6 +17,11 @@ RUN if [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
 # Copy source code
 COPY . .
 
+# [PATCH] Increase file upload limit in Admin UI
+# Overwriting the component directly in node_modules before build
+COPY overrides/upload-media-form-item.tsx node_modules/@medusajs/dashboard/src/routes/products/common/components/upload-media-form-item/upload-media-form-item.tsx
+COPY overrides/file-upload/file-upload.tsx node_modules/@medusajs/dashboard/src/components/common/file-upload/file-upload.tsx
+
 # Set env for build
 ENV NODE_ENV=production
 

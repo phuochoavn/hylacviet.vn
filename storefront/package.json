@@ -36,6 +36,7 @@
     "react-country-flag": "^3.1.0",
     "react-dom": "19.0.3",
     "server-only": "^0.0.1",
+    "splitting": "^1.1.0",
     "tailwindcss-radix": "^2.8.0",
     "three": "^0.182.0",
     "webpack": "^5"

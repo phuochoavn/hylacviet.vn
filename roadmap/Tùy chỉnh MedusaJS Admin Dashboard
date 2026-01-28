@@ -1,0 +1,443 @@
+# Hướng dẫn Kỹ thuật Chuyên sâu: Kiến trúc, Tùy biến và Mở rộng Admin Dashboard trên nền tảng MedusaJS V2
+
+## 1. Tổng quan Điều hành
+
+Báo cáo nghiên cứu này cung cấp một phân tích toàn diện và chuyên sâu về kiến trúc Admin Dashboard của MedusaJS V2, được thiết kế dành riêng cho các kiến trúc sư phần mềm và lập trình viên cao cấp đang xây dựng các hệ thống thương mại điện tử quy mô lớn. Không giống như phiên bản tiền nhiệm (V1) dựa trên Gatsby, Medusa V2 giới thiệu một sự thay đổi căn bản trong triết lý phát triển: chuyển từ mô hình "Fork-and-Modify" (Sao chép và Chỉnh sửa) sang mô hình "Injection-based Extension" (Mở rộng dựa trên Tiêm phụ thuộc) được hỗ trợ bởi Vite.
+
+Tài liệu này sẽ giải cấu trúc các cơ chế cốt lõi của Admin V2, định nghĩa các quy chuẩn (Best Practices) cho việc tùy biến giao diện, và cung cấp các hướng dẫn kỹ thuật chi tiết để đảm bảo tính ổn định, khả năng bảo trì và an toàn khi nâng cấp (Upgrade-safe). Tất cả các đề xuất đều tuân thủ nguyên tắc "The Right Way" – tối đa hóa việc sử dụng các API công khai của Medusa và tuyệt đối tránh can thiệp trực tiếp vào mã nguồn lõi (node_modules).
+
+## 2. Triết lý Tùy biến của V2: Kiến trúc Cốt lõi (Core Architecture)
+
+Sự chuyển đổi từ Medusa V1 sang V2 không chỉ là một bản cập nhật tính năng mà là sự tái cấu trúc hoàn toàn về tầng giao diện quản trị. Việc hiểu rõ cơ chế này là điều kiện tiên quyết để thực hiện bất kỳ tùy chỉnh nào một cách hiệu quả.
+
+### 2.1 Cơ chế Admin Extension: Tại sao loại bỏ Forking?
+
+Trong Medusa V1, để thực hiện các thay đổi sâu về giao diện, các nhà phát triển thường phải sao chép (fork) toàn bộ mã nguồn của Admin UI hoặc sử dụng các cấu hình Webpack phức tạp để ghi đè (override) các thành phần cốt lõi. Phương pháp này, mặc dù linh hoạt, đã tạo ra một khoản nợ kỹ thuật khổng lồ. Khi Medusa phát hành các bản vá bảo mật hoặc tính năng mới, việc đồng bộ hóa mã nguồn fork trở nên cực kỳ khó khăn và dễ gây lỗi xung đột (merge conflicts).
+
+Medusa V2 giải quyết vấn đề này bằng cách áp dụng kiến trúc Module Federation ảo hóa thông qua Vite. Triết lý cốt lõi của V2 coi Admin Dashboard không phải là một mã nguồn tĩnh để chỉnh sửa, mà là một "lớp vỏ" (shell) động, có khả năng tự động phát hiện và nạp (consume) các tiện ích mở rộng từ dự án của người dùng.
+
+Cơ chế này hoạt động dựa trên nguyên tắc **Inversion of Control (Đảo ngược điều khiển)**:
+*   **V1 (Cũ):** Dự án của người dùng bao bọc và sửa đổi mã nguồn Admin.
+*   **V2 (Mới):** Mã nguồn Admin cốt lõi hoạt động độc lập và "gọi" các thành phần mở rộng từ thư mục `src/admin` của người dùng tại thời điểm build.
+
+Điều này đảm bảo rằng lõi của Admin có thể được cập nhật độc lập thông qua npm (`@medusajs/admin` hoặc `@medusajs/dashboard`), trong khi các tùy biến của người dùng vẫn được bảo toàn và tích hợp liền mạch.
+
+### 2.2 Quy trình Build-time và Cơ chế Bundling với Vite
+
+Một trong những cải tiến kỹ thuật quan trọng nhất trong V2 là việc thay thế Webpack/Gatsby bằng Vite v5. Sự thay đổi này không chỉ cải thiện tốc độ phát triển (thông qua Hot Module Replacement - HMR) mà còn thay đổi cách các tệp tùy biến được gộp vào ứng dụng.
+
+Khi lệnh `medusa develop` hoặc `medusa build` được thực thi, quy trình sau sẽ diễn ra:
+1.  **Quét Mã nguồn (Scanning):** Trình biên dịch (Bundler) của Medusa sẽ quét thư mục `src/admin` để tìm các tệp tuân thủ quy ước đặt tên và xuất khẩu (export), cụ thể là các Widgets và UI Routes.
+2.  **Tạo Module Ảo (Virtual Module Generation):** Hệ thống sẽ tạo ra các điểm nhập (entry points) ảo. Thay vì import trực tiếp các file vật lý, ứng dụng Admin import các module ảo này. Các module ảo này đóng vai trò như một danh sách đăng ký, trỏ tới các component React mà người dùng đã định nghĩa trong `src/admin`.
+3.  **Hợp nhất Cấu hình (Configuration Resolution):** Các tệp cấu hình widget (`defineWidgetConfig`) và route (`defineRouteConfig`) được đọc để xác định vị trí tiêm (injection zones) và đường dẫn URL.
+4.  **Biên dịch Vite (Vite Compilation):** Vite biên dịch toàn bộ ứng dụng – bao gồm cả lõi Admin và các extension của người dùng – thành một gói tĩnh (static bundle) duy nhất. Gói này bao gồm các tệp HTML, CSS (Tailwind), và JS đã được tối ưu hóa, sẵn sàng để deploy hoặc serve từ backend.
+
+**Bảng 1: So sánh Kiến trúc Frontend V1 và V2**
+
+| Đặc điểm | Medusa V1 (Legacy) | Medusa V2 (Modern) |
+| :--- | :--- | :--- |
+| **Bundler** | Webpack / Gatsby | Vite v5 |
+| **Cơ chế Mở rộng** | Forking repo / Config object | File-system based (`src/admin`) |
+| **Styling** | CSS Modules / Tailwind (Hạn chế) | Tailwind CSS + Medusa UI (Radix) |
+| **State Management** | Redux / Context API | TanStack Query (React Query) |
+| **Environment Vars** | Tiền tố `MEDUSA_ADMIN_` | Tiền tố `VITE_` (Chuẩn Vite) |
+
+## 3. Tùy chỉnh Thành phần theo Quy chuẩn (UI Extensions)
+
+Trong Medusa V2, việc tùy chỉnh giao diện được thực hiện thông qua Admin Extension SDK, bao gồm hai thành phần chính: Widgets (Tiện ích) và UI Routes (Tuyến giao diện). Việc tuân thủ đúng quy chuẩn khi tạo các thành phần này là bắt buộc để đảm bảo tính tương thích.
+
+### 3.1 Widgets: Can thiệp vào Khu vực Hiển thị (Injection Zones)
+
+Widgets là các React Component được thiết kế để "tiêm" vào các vị trí được định nghĩa trước (Injection Zones) trên các trang có sẵn của Admin Dashboard. Đây là phương pháp chính thống để thêm thông tin hoặc chức năng vào các trang chi tiết (Detail Pages) hoặc danh sách (List Pages).
+
+#### 3.1.1 Cách tạo và Đăng ký Widget
+
+Một Widget hợp lệ phải nằm trong thư mục `src/admin/widgets` và xuất khẩu hai thành phần:
+1.  Một React Component (default export).
+2.  Một đối tượng cấu hình `config` sử dụng hàm `defineWidgetConfig` từ `@medusajs/admin-sdk`.
+
+**Ví dụ Mã nguồn:**
+
+```typescript
+// src/admin/widgets/product-analytics.tsx
+import { defineWidgetConfig } from "@medusajs/admin-sdk"
+import { Container, Heading, Text } from "@medusajs/ui"
+import { DetailWidgetProps } from "@medusajs/framework/types"
+import { HttpTypes } from "@medusajs/types"
+
+// Component nhận props chứa dữ liệu ngữ cảnh (ví dụ: Product data)
+const ProductAnalyticsWidget = ({ 
+  data 
+}: DetailWidgetProps<HttpTypes.AdminProduct>) => {
+  return (
+    <Container className="divide-y p-0">
+      <div className="flex items-center justify-between px-6 py-4">
+        <Heading level="h2">Phân tích Sản phẩm</Heading>
+      </div>
+      <div className="px-6 py-4">
+        <Text>Sản phẩm {data.title} (ID: {data.id}) đang có xu hướng tăng trưởng.</Text>
+      </div>
+    </Container>
+  )
+}
+
+// Đăng ký vị trí hiển thị
+export const config = defineWidgetConfig({
+  zone: "product.details.after", // Hiển thị bên dưới phần chi tiết sản phẩm
+})
+
+export default ProductAnalyticsWidget
+```
+
+**Phân tích:** Sử dụng `DetailWidgetProps` giúp đảm bảo an toàn kiểu dữ liệu (type safety), cho phép truy cập trực tiếp vào dữ liệu của thực thể hiện tại (ví dụ: `AdminProduct`) mà không cần gọi lại API.
+
+#### 3.1.2 Danh sách các Injection Zones Phổ biến
+
+Các vùng tiêm (Injection Zones) được chia theo Domain (Lĩnh vực) và Page Type (Loại trang: List hoặc Details).
+
+**Bảng 2: Các Vùng Injection Zones Quan trọng**
+
+| Domain | Zone Name | Vị trí Hiển thị | Props Nhận được |
+| :--- | :--- | :--- | :--- |
+| **Product** | `product.details.before` | Trên cùng trang chi tiết SP | `DetailWidgetProps<AdminProduct>` |
+| | `product.details.after` | Dưới cùng trang chi tiết SP | `DetailWidgetProps<AdminProduct>` |
+| | `product.list.before` | Trên cùng danh sách SP | Không có data cụ thể |
+| | `product.list.after` | Dưới cùng danh sách SP | Không có data cụ thể |
+| **Order** | `order.details.before` | Trên cùng chi tiết đơn hàng | `DetailWidgetProps<AdminOrder>` |
+| | `order.details.after` | Dưới cùng chi tiết đơn hàng | `DetailWidgetProps<AdminOrder>` |
+| | `order.list.before` | Trên cùng danh sách đơn hàng | Không có data cụ thể |
+| **Customer** | `customer.details.before` | Trên cùng chi tiết khách hàng | `DetailWidgetProps<AdminCustomer>` |
+| | `customer.details.after` | Dưới cùng chi tiết khách hàng | `DetailWidgetProps<AdminCustomer>` |
+| **Login** | `login.before` | Trước form đăng nhập | Không có |
+| **Sidebar** | `sidebar.top` / `sidebar.bottom` | Đầu hoặc cuối Sidebar | Không có |
+
+*Lưu ý: Kể từ phiên bản V2.7.0, Medusa bổ sung thêm các zone cho bố cục hai cột như `location.list.side.before` và `location.list.side.after`, cho phép linh hoạt hơn trong việc bố trí giao diện.*
+
+### 3.2 UI Routes: Tạo trang quản trị mới
+
+UI Routes cho phép tạo ra các trang hoàn toàn mới trong Admin Dashboard, ví dụ như trang báo cáo tùy chỉnh, trang quản lý nhà cung cấp (Vendors), hoặc trang cấu hình hệ thống riêng biệt.
+
+#### 3.2.1 Routing và File Structure
+
+Medusa V2 áp dụng cơ chế định tuyến dựa trên hệ thống tập tin (File-system Routing). Bất kỳ tệp `page.tsx` nào nằm trong thư mục con của `src/admin/routes` sẽ tự động trở thành một route.
+
+*   `src/admin/routes/analytics/page.tsx` -> Đường dẫn: `/app/analytics`
+*   `src/admin/routes/vendors/[id]/page.tsx` -> Đường dẫn: `/app/vendors/:id` (Hỗ trợ Dynamic Routing).
+
+#### 3.2.2 Đăng ký Menu Item vào Sidebar
+
+Để người dùng có thể truy cập trang mới tạo từ Sidebar, tệp route cần xuất khẩu cấu hình `routeConfig`.
+
+**Ví dụ Mã nguồn:**
+
+```typescript
+// src/admin/routes/custom-report/page.tsx
+import { defineRouteConfig } from "@medusajs/admin-sdk"
+import { ChatBubbleLeftRight } from "@medusajs/icons" // Icon từ thư viện chuẩn
+import { Container, Heading } from "@medusajs/ui"
+
+const CustomReportPage = () => {
+  return (
+    <Container>
+      <Heading>Báo cáo Tùy chỉnh</Heading>
+      {/* Nội dung trang */}
+    </Container>
+  )
+}
+
+export const config = defineRouteConfig({
+  label: "Báo cáo", // Tên hiển thị trên Sidebar
+  icon: ChatBubbleLeftRight, // Icon hiển thị
+})
+
+export default CustomReportPage
+```
+
+**Cơ chế hoạt động:** Khi build, Medusa đọc `defineRouteConfig`. Nếu thuộc tính `label` và `icon` tồn tại, nó sẽ tự động thêm một mục vào Sidebar trỏ tới đường dẫn của route này mà không cần can thiệp vào mã nguồn Sidebar gốc.
+
+### 3.3 Custom Components: Sử dụng @medusajs/ui
+
+Để đảm bảo tính nhất quán về giao diện (Look & Feel), việc sử dụng thư viện `@medusajs/ui` là bắt buộc. Thư viện này được xây dựng trên nền tảng Radix UI (đảm bảo tính truy cập - accessibility) và Tailwind CSS.
+
+**Các quy tắc sử dụng:**
+*   **Layout:** Luôn bọc nội dung chính trong component `Container` để tạo ra hiệu ứng thẻ (card) với viền và đổ bóng chuẩn của Medusa.
+*   **Typography:** Sử dụng `Heading` và `Text` thay vì thẻ HTML `h1`, `p` thông thường để đảm bảo font chữ, kích thước và màu sắc đồng bộ với theme (bao gồm cả Dark Mode).
+*   **Feedback:** Sử dụng `toast` từ `@medusajs/ui` để hiển thị thông báo thành công hoặc lỗi, thay vì `alert()` mặc định của trình duyệt.
+*   **Icons:** Sử dụng bộ icon `@medusajs/icons` để đồng bộ phong cách hình ảnh.
+
+## 4. "The Right Way" – Thay đổi Giao diện và Branding
+
+Thay đổi thương hiệu (Logo, Màu sắc) là nhu cầu phổ biến nhưng cũng dễ vi phạm quy chuẩn nhất. Trong V2, tuyệt đối không chỉnh sửa trực tiếp trong `node_modules` hoặc thư mục `.medusa`.
+
+### 4.1 Thay đổi Logo và Favicon
+
+Medusa V2 Admin được đóng gói như một plugin, do đó không có thư mục `public` đơn giản để ghi đè logo. Có hai phương pháp chính thống:
+
+**Phương pháp 1: Sử dụng Widget để Ghi đè (Khuyên dùng)**
+
+Do không thể can thiệp vào mã nguồn gốc của trang Login, ta có thể sử dụng một Widget tiêm vào `login.before` và sử dụng DOM manipulation (thao tác DOM) để thay thế Logo mặc định khi component được mount. Đây là một "thủ thuật" được cộng đồng chấp nhận để tránh việc fork.
+
+```typescript
+// src/admin/widgets/branding-override.tsx
+import { defineWidgetConfig } from "@medusajs/admin-sdk"
+import { useEffect } from "react"
+
+const BrandingOverride = () => {
+  useEffect(() => {
+    // Tìm phần tử logo mặc định của Medusa (cần inspect kỹ class name)
+    const logoContainer = document.querySelector(".medusa-logo-container")
+    if (logoContainer) {
+      // Thay thế nội dung HTML hoặc ẩn đi và chèn ảnh mới
+      logoContainer.innerHTML = '<img src="https://my-cdn.com/my-logo.png" alt="My Brand" class="h-8 w-auto" />'
+    }
+  }, [])
+
+  return null // Widget này không render giao diện riêng, chỉ chạy side-effect
+}
+
+export const config = defineWidgetConfig({
+  zone: "login.before", // Chạy script này ngay khi trang login tải
+})
+
+export default BrandingOverride
+```
+
+**Phương pháp 2: Xây dựng Admin Độc lập (Standalone)**
+
+Nếu yêu cầu thay đổi quá lớn (như thay đổi hoàn toàn layout login), giải pháp chính thống là không sử dụng plugin Admin mặc định mà build một ứng dụng Admin riêng biệt (Standalone App) sử dụng Admin API của Medusa làm backend. Tuy nhiên, điều này tốn kém chi phí bảo trì.
+
+**Thay đổi Favicon:** Trong V2, việc thay đổi Favicon có thể thực hiện thông qua cấu hình Vite mở rộng (xem mục 4.3).
+
+### 4.2 Can thiệp vào Tailwind Configuration
+
+Medusa V2 cho phép mở rộng cấu hình Tailwind của Admin. Điều này cho phép thay đổi bảng màu (Color Palette) toàn hệ thống một cách an toàn.
+
+**Quy trình thực hiện:**
+1.  Tạo tệp `tailwind.config.js` tại thư mục gốc của dự án (hoặc `src/admin` tùy cấu hình monorepo).
+2.  Import `uiPreset` từ `@medusajs/ui-preset`.
+3.  Sử dụng `content` để trỏ tới các tệp trong `src/admin`.
+4.  Ghi đè (override) các biến màu semantic của Medusa trong phần `theme.extend`.
+
+**Ví dụ cấu hình:**
+
+```javascript
+// tailwind.config.js
+const uiPreset = require("@medusajs/ui-preset")
+
+module.exports = {
+  presets: [uiPreset],
+  content: [
+    "./src/admin/**/*.{js,jsx,ts,tsx}",
+    "./node_modules/@medusajs/ui/dist/**/*.{js,jsx,ts,tsx}"
+  ],
+  theme: {
+    extend: {
+      colors: {
+        // Ghi đè màu chủ đạo của Medusa
+        ui: {
+          fg: {
+            interactive: "#E11D48", // Đổi màu tím mặc định sang màu đỏ thương hiệu
+            base: "#111827",
+          },
+          bg: {
+            base: "#FFFFFF",
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+*Lưu ý: Medusa UI sử dụng hệ thống Design Token (ví dụ: `ui-fg-interactive`). Việc ghi đè đúng token này sẽ thay đổi màu sắc trên toàn bộ ứng dụng (nút bấm, link, trạng thái active) mà không cần viết CSS thủ công.*
+
+### 4.3 Cấu hình Vite mở rộng (vite.config.ts)
+
+Để áp dụng các thay đổi build-time (như alias, plugins), Medusa V2 cho phép mở rộng cấu hình Vite thông qua tệp `medusa-config.ts` hoặc tạo file cấu hình riêng cho admin.
+
+```typescript
+// medusa-config.ts
+module.exports = defineConfig({
+  admin: {
+    vite: (config) => {
+      return {
+       ...config,
+        server: {
+         ...config.server,
+          // Cấu hình server dev
+        },
+        resolve: {
+          alias: {
+            // Thêm alias nếu cần
+          }
+        }
+      }
+    }
+  }
+})
+```
+
+Việc sử dụng `admin.vite` trong `medusa-config.ts` là cách chính thống để can thiệp vào quy trình build của Admin.
+
+## 5. Can thiệp sâu vào Logic xử lý (Action & Data)
+
+Giao diện chỉ là bề nổi. Sức mạnh thực sự của việc tùy biến nằm ở khả năng tương tác với dữ liệu và quy trình nghiệp vụ (Workflows).
+
+### 5.1 Sử dụng Admin Hooks và JS SDK
+
+Medusa V2 tích hợp sẵn TanStack Query (React Query) và Medusa JS SDK. Để đảm bảo hiệu năng và quản lý trạng thái (caching, loading states) đồng bộ với hệ thống, nhà phát triển bắt buộc phải sử dụng các hooks này thay vì `fetch` hoặc `axios` thông thường.
+
+**Bước 1: Khởi tạo SDK**
+Tạo tệp `src/admin/lib/sdk.ts` để cấu hình SDK client. Chú ý sử dụng `import.meta.env` cho biến môi trường trong Vite.
+
+```typescript
+// src/admin/lib/sdk.ts
+import Medusa from "@medusajs/js-sdk"
+
+export const sdk = new Medusa({
+  baseUrl: import.meta.env.VITE_BACKEND_URL || "http://localhost:9000",
+  debug: import.meta.env.DEV,
+  auth: {
+    type: "session", // Admin sử dụng session cookie
+  },
+})
+```
+
+**Bước 2: Sử dụng Hooks (useQuery/useMutation)**
+Sử dụng `useQuery` để fetch dữ liệu và `useMutation` để thay đổi dữ liệu.
+
+```typescript
+// src/admin/widgets/product-custom-data.tsx
+import { useQuery } from "@tanstack/react-query"
+import { sdk } from "../lib/sdk"
+import { Container, Heading, Text } from "@medusajs/ui"
+
+const CustomProductWidget = ({ data: product }) => {
+  // Fetch dữ liệu từ custom API route
+  const { data, isLoading } = useQuery({
+    queryKey: ["custom-product-analytics", product.id],
+    queryFn: () => sdk.client.request("GET", `/admin/products/${product.id}/analytics`),
+  })
+
+  if (isLoading) return <Container>Loading...</Container>
+
+  return (
+    <Container>
+      <Heading>Dữ liệu Phân tích</Heading>
+      <Text>Lượt xem: {data?.views}</Text>
+    </Container>
+  )
+}
+```
+
+*Phân tích: `queryKey` giúp React Query quản lý cache. Khi dữ liệu thay đổi, giao diện sẽ tự động cập nhật.*
+
+### 5.2 Kích hoạt Medusa Workflow từ Admin UI
+
+Trong Medusa V2, logic nghiệp vụ phức tạp được đóng gói trong các Workflows. UI không thể gọi trực tiếp Workflow (vì Workflow chạy trên server). Quy trình chuẩn là:
+1.  **Workflow:** Định nghĩa Workflow xử lý nghiệp vụ (ví dụ: Đồng bộ ERP).
+2.  **API Route:** Tạo một API Route để execute Workflow đó.
+3.  **UI:** Gọi API Route từ Admin UI bằng `useMutation`.
+
+**Ví dụ quy trình chuẩn:**
+
+**Định nghĩa Workflow (`src/workflows/sync-erp.ts`):**
+
+```typescript
+import { createWorkflow, createStep, StepResponse } from "@medusajs/framework/workflows-sdk"
+
+const syncStep = createStep("sync-step", async () => {
+  // Logic gọi ERP
+  return new StepResponse({ status: "synced" })
+})
+
+export const syncErpWorkflow = createWorkflow("sync-erp", () => {
+  return syncStep()
+})
+```
+
+**Tạo API Route (`src/api/admin/sync-erp/route.ts`):**
+
+```typescript
+import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { syncErpWorkflow } from "../../../workflows/sync-erp"
+
+export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
+  const { result } = await syncErpWorkflow(req.scope).run()
+  res.json({ result })
+}
+```
+
+**Nút bấm trên UI (`src/admin/widgets/sync-button.tsx`):**
+
+```typescript
+import { useMutation } from "@tanstack/react-query"
+import { sdk } from "../lib/sdk"
+import { Button, toast } from "@medusajs/ui"
+
+const SyncButton = () => {
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => sdk.client.request("POST", "/admin/sync-erp"),
+    onSuccess: () => toast.success("Đồng bộ thành công"),
+    onError: () => toast.error("Lỗi đồng bộ"),
+  })
+
+  return (
+    <Button onClick={() => mutate()} isLoading={isPending}>
+      Đồng bộ ERP
+    </Button>
+  )
+}
+```
+
+Phương pháp này tuân thủ kiến trúc phân tầng: UI chỉ chịu trách nhiệm hiển thị và kích hoạt, còn logic nghiệp vụ và xử lý giao dịch (transaction) nằm hoàn toàn ở Backend.
+
+## 6. Cấu trúc Thư mục và Quản lý Mã nguồn
+
+Để quản lý hàng chục Widget và Route trong một dự án lớn, việc tổ chức thư mục khoa học là rất quan trọng. Cấu trúc phẳng (flat structure) sẽ nhanh chóng trở nên hỗn loạn.
+
+### 6.1 Đề xuất Cấu trúc Thư mục (Scalable Directory Structure)
+
+Nên tổ chức thư mục theo Domain-driven (theo chức năng nghiệp vụ) bên trong `src/admin`.
+
+```
+src/
+├── admin/
+│   ├── components/         # Các UI component tái sử dụng (không chứa logic business)
+│   │   ├── status-badge.tsx
+│   │   └── data-table.tsx
+│   ├── hooks/              # Custom React Query hooks
+│   │   ├── use-vendor-stats.tsx
+│   │   └── use-custom-orders.tsx
+│   ├── lib/                # Cấu hình SDK và tiện ích
+│   │   ├── sdk.ts          # Khởi tạo Medusa SDK
+│   │   └── constants.ts
+│   ├── routes/             # UI Routes (Pages)
+│   │   ├── vendors/        # Domain: Vendors
+│   │   │   ├── page.tsx    # List page
+│   │   │   └── [id]/       # Detail page
+│   │   │       └── page.tsx
+│   │   └── reports/
+│   │       └── page.tsx
+│   ├── widgets/            # Injection Widgets (chia theo Domain)
+│   │   ├── product/
+│   │   │   ├── erp-sync-card.tsx
+│   │   │   └── price-history.tsx
+│   │   ├── order/
+│   │   │   └── fraud-check-alert.tsx
+│   │   └── login/
+│   │       └── branding.tsx
+│   └── vite-env.d.ts       # Type definitions cho biến môi trường
+```
+
+### 6.2 Đảm bảo tính an toàn khi nâng cấp (Upgrade-safe)
+
+Để đảm bảo mã nguồn tùy chỉnh không bị lỗi khi nâng cấp Medusa Core:
+1.  **Chỉ import từ Public Packages:** Chỉ import các thành phần từ `@medusajs/ui`, `@medusajs/admin-sdk`, `@medusajs/js-sdk`, và `@medusajs/types`. Tuyệt đối không import từ đường dẫn sâu như `@medusajs/admin/dist/...` vì cấu trúc nội bộ có thể thay đổi.
+2.  **Sử dụng Type Safety:** Luôn sử dụng các Type được cung cấp sẵn (như `HttpTypes.AdminProduct`) thay vì tự định nghĩa lại interface dữ liệu. Điều này giúp code tự động thích ứng khi Data Model của Medusa thay đổi.
+3.  **Cô lập Logic:** Giữ logic xử lý dữ liệu phức tạp trong Workflows (Backend) thay vì trong React Component. Nếu UI Framework của Medusa thay đổi trong tương lai (ví dụ lên V3), bạn chỉ cần viết lại phần hiển thị, logic nghiệp vụ vẫn được bảo toàn.
+4.  **Prefix Biến môi trường:** Luôn tuân thủ quy tắc tiền tố `VITE_` cho các biến cần dùng ở Frontend để tránh việc biến không được build vào bundle.
+
+## 7. Kết luận
+
+Kiến trúc Admin Dashboard của MedusaJS V2 đại diện cho sự trưởng thành của nền tảng, chuyển dịch từ sự tùy biến tự do nhưng rủi ro (V1) sang sự mở rộng có cấu trúc và an toàn. Bằng cách tuân thủ nghiêm ngặt việc sử dụng Injection Zones, Admin SDK, và hệ thống Design Tokens của Medusa UI, các nhà phát triển có thể xây dựng những hệ thống quản trị thương mại điện tử phức tạp, đồng nhất về giao diện và bền vững về mặt kỹ thuật. Việc tách biệt rõ ràng giữa UI (Widgets/Routes) và Logic (API/Workflows) là chìa khóa để vận hành hệ thống ổn định lâu dài.

@@ -7,6 +7,8 @@ module.exports = defineConfig({
     databaseUrl: process.env.DATABASE_URL,
     databaseLogging: false,
     http: {
+      // @ts-ignore - trustProxy needed for Traefik but missing from Medusa V2 types
+      trustProxy: true,
       storeCors: process.env.STORE_CORS || "http://localhost:8000",
       adminCors: process.env.ADMIN_CORS || "http://localhost:9000",
       authCors: process.env.AUTH_CORS || "http://localhost:8000",
@@ -16,7 +18,6 @@ module.exports = defineConfig({
     redisUrl: process.env.REDIS_URL,
     workerMode: process.env.MEDUSA_WORKER_MODE as "shared" | "worker" | "server",
   },
-  // Bật Admin lên và gán đường dẫn
   admin: {
     disable: false,
     path: "/app",
@@ -28,7 +29,7 @@ module.exports = defineConfig({
     },
     {
       resolve: "@medusajs/medusa/cache-redis",
-      options: { 
+      options: {
         redisUrl: process.env.REDIS_URL,
         ttl: 60 * 60 * 24,
       },

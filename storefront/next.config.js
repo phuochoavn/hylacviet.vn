@@ -5,16 +5,24 @@ checkEnvVariables()
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  
+
   // Enable standalone output for Docker
   output: 'standalone',
-  
+
   // Optimize images
   images: {
     remotePatterns: [
       {
         protocol: "http",
         hostname: "localhost",
+      },
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
+      {
+        protocol: "https",
+        hostname: "api.hylacviet.vn",
       },
       {
         protocol: "https",
@@ -42,12 +50,12 @@ const nextConfig = {
       },
     ],
   },
-  
+
   // Skip type checking during build
   typescript: {
     ignoreBuildErrors: true,
   },
-  
+
   // Skip linting during build
   eslint: {
     ignoreDuringBuilds: true,
